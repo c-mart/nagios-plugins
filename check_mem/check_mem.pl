@@ -1,5 +1,7 @@
 #!/usr/bin/perl -w
 
+# Modified by Chris Martin to report GB with three decimal places, rather than KB
+
 # Heavily based on the script from:
 # check_mem.pl Copyright (C) 2000 Dan Larsson <dl@tyfon.net>
 # heavily modified by
@@ -39,6 +41,14 @@ use vars qw($opt_c $opt_f $opt_u $opt_w $opt_C $opt_v %exit_codes);
                  'CRITICAL', 2,
                  );
 
+# Convert KB to GB with three decimal digits
+sub kb_to_gb {
+  my $kb = $_[0];
+  my $gb = $kb / 1024 / 1024;
+  my $gb_round = sprintf('%.3f', $gb);
+  return $gb_round;
+}
+
 # Get our variables, do our checking:
 init();
 
@@ -52,17 +62,22 @@ if ($opt_C) { #Do we count caches as free?
 }
 
 # Round to the nearest KB
-$free_memory_kb = sprintf('%d',$free_memory_kb);
-$used_memory_kb = sprintf('%d',$used_memory_kb);
-$caches_kb = sprintf('%d',$caches_kb);
+# $free_memory_kb = sprintf('%d',$free_memory_kb);
+# $used_memory_kb = sprintf('%d',$used_memory_kb);
+# $caches_kb = sprintf('%d',$caches_kb);
+
+# Round to GB with three decimal places
+my $free_memory_gb = kb_to_gb($free_memory_kb);
+my $used_memory_gb = kb_to_gb($used_memory_kb);
+my $caches_gb = kb_to_gb($caches_kb);
+
 
 # Tell Nagios what we came up with
-tell_nagios($used_memory_kb,$free_memory_kb,$caches_kb);
-
+tell_nagios($used_memory_gb,$free_memory_gb,$caches_gb);
 
 sub tell_nagios {
     my ($used,$free,$caches) = @_;
-    
+
     # Calculate Total Memory
     my $total = $free + $used;
     print "$total Total\n" if ($opt_v);
@@ -76,31 +91,31 @@ sub tell_nagios {
       $perf_warn = int(${total} * ( 100 - $opt_w ) / 100);
       $perf_crit = int(${total} * ( 100 - $opt_c ) / 100);
     }
-    
-    my $perfdata = "|TOTAL=${total}KB;;;; USED=${used}KB;${perf_warn};${perf_crit};; FREE=${free}KB;;;; CACHES=${caches}KB;;;;";
+
+    my $perfdata = "|TOTAL=${total}GB;;;; USED=${used}GB;${perf_warn};${perf_crit};; FREE=${free}GB;;;; CACHES=${caches}GB;;;;";
 
     if ($opt_f) {
       my $percent    = sprintf "%.1f", ($free / $total * 100);
       if ($percent <= $opt_c) {
-          finish("CRITICAL - $percent% ($free kB) free!$perfdata",$exit_codes{'CRITICAL'});
+          finish("CRITICAL - $percent% ($free GB) free!$perfdata",$exit_codes{'CRITICAL'});
       }
       elsif ($percent <= $opt_w) {
-          finish("WARNING - $percent% ($free kB) free!$perfdata",$exit_codes{'WARNING'});
+          finish("WARNING - $percent% ($free GB) free!$perfdata",$exit_codes{'WARNING'});
       }
       else {
-          finish("OK - $percent% ($free kB) free.$perfdata",$exit_codes{'OK'});
+          finish("OK - $percent% ($free GB) free.$perfdata",$exit_codes{'OK'});
       }
     }
     elsif ($opt_u) {
       my $percent    = sprintf "%.1f", ($used / $total * 100);
       if ($percent >= $opt_c) {
-          finish("CRITICAL - $percent% ($used kB) used!$perfdata",$exit_codes{'CRITICAL'});
+          finish("CRITICAL - $percent% ($used GB) used!$perfdata",$exit_codes{'CRITICAL'});
       }
       elsif ($percent >= $opt_w) {
-          finish("WARNING - $percent% ($used kB) used!$perfdata",$exit_codes{'WARNING'});
+          finish("WARNING - $percent% ($used GB) used!$perfdata",$exit_codes{'WARNING'});
       }
       else {
-          finish("OK - $percent% ($used kB) used.$perfdata",$exit_codes{'OK'});
+          finish("OK - $percent% ($used GB) used.$perfdata",$exit_codes{'OK'});
       }
     }
 }
@@ -120,7 +135,7 @@ sub usage() {
   print "check_mem.pl comes with absolutely NO WARRANTY either implied or explicit\n";
   print "This program is licensed under the terms of the\n";
   print "MIT License (check source code for details)\n";
-  exit $exit_codes{'UNKNOWN'}; 
+  exit $exit_codes{'UNKNOWN'};
 }
 
 sub get_memory_info {
@@ -246,7 +261,7 @@ sub get_memory_info {
                 }
             }
             $used_memory_kb = $total_memory_kb - $free_memory_kb;
-            
+
         }
         else { # We have kstat
             my $kstat = Sun::Solaris::Kstat->new();
@@ -256,14 +271,14 @@ sub get_memory_info {
             # to me how to determine UFS's cache size.  There's inode_cache,
             # and maybe the physmem variable in the system_pages module??
             # In the real world, it looks to be so small as not to really matter,
-            # so we don't grab it.  If someone can give me code that does this, 
+            # so we don't grab it.  If someone can give me code that does this,
             # I'd be glad to put it in.
             my $arc_size = (exists ${kstat}->{zfs} && ${kstat}->{zfs}->{0}->{arcstats}->{size}) ?
-                 ${kstat}->{zfs}->{0}->{arcstats}->{size} / 1024 
+                 ${kstat}->{zfs}->{0}->{arcstats}->{size} / 1024
                  : 0;
             $caches_kb += $arc_size;
             my $pagesize = `pagesize`;
-    
+
             $total_memory_kb = $phys_pages * $pagesize / 1024;
             $free_memory_kb = $free_pages * $pagesize / 1024;
             $used_memory_kb = $total_memory_kb - $free_memory_kb;
@@ -317,7 +332,7 @@ sub get_memory_info {
     	my $command_line = `vmstat | tail -1 | awk '{print \$4,\$5}'`;
     	chomp $command_line;
         my @memlist      = split(/ /, $command_line);
-    
+
         # Define the calculating scalars
         $used_memory_kb  = $memlist[0]/1024;
         $free_memory_kb = $memlist[1]/1024;
@@ -334,7 +349,7 @@ sub init {
     else {
       getopts('c:fuCvw:');
     }
-    
+
     # Shortcircuit the switches
     if (!$opt_w or $opt_w == 0 or !$opt_c or $opt_c == 0) {
       print "*** You must define WARN and CRITICAL levels!\n";
@@ -344,7 +359,7 @@ sub init {
       print "*** You must select to monitor either USED or FREE memory!\n";
       &usage;
     }
-    
+
     # Check if levels are sane
     if ($opt_w <= $opt_c and $opt_f) {
       print "*** WARN level must not be less than CRITICAL when checking FREE memory!\n";
